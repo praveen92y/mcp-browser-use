@@ -523,7 +523,7 @@ wheels = [
 
 [[package]]
 name = "mcp-browser-use"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
     { name = "browser-use" },
@@ -536,7 +536,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "browser-use", specifier = ">=0.1.40,<0.1.50" },
+    { name = "browser-use", specifier = ">=0.1.40,<=0.1.50" },
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "mcp", specifier = ">=0.1.0" },
     { name = "playwright", specifier = ">=1.50.0" },
