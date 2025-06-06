@@ -1,8 +1,8 @@
 [project]
 name = "mcp-browser-use"
-version = "0.1.5"
+version = "0.1.6"
 description = "MCP server for browser-use"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "Vinayak Mehta", email = "vmehta94@gmail.com"},
 ]
@@ -12,7 +12,7 @@ dependencies = [
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
     "playwright>=1.50.0",
-    "browser-use>=0.1.40",
+    "browser-use>=0.1.40,<0.1.50",
 ]
 readme = "README.md"
 license = {text = "Apache-2.0"}
