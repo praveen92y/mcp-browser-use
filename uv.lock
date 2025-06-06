@@ -523,11 +523,12 @@ wheels = [
 
 [[package]]
 name = "mcp-browser-use"
-version = "0.1.7"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "browser-use" },
     { name = "fastapi" },
+    { name = "markdownify" },
     { name = "mcp" },
     { name = "playwright" },
     { name = "python-dotenv" },
@@ -538,6 +539,7 @@ dependencies = [
 requires-dist = [
     { name = "browser-use", specifier = ">=0.1.40,<=0.1.50" },
     { name = "fastapi", specifier = ">=0.109.0" },
+    { name = "markdownify", specifier = ">=0.11.0" },
     { name = "mcp", specifier = ">=0.1.0" },
     { name = "playwright", specifier = ">=1.50.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },

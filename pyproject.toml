@@ -1,7 +1,7 @@
 [project]
 name = "mcp-browser-use"
-version = "0.1.7"
-description = "MCP server for browser-use"
+version = "0.2.0"
+description = "MCP server for browser-use with automatic browser detection and user session support"
 requires-python = ">=3.11"
 authors = [
     {name = "Vinayak Mehta", email = "vmehta94@gmail.com"},
@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.27.0",
     "playwright>=1.50.0",
     "browser-use>=0.1.40,<=0.1.50",
+    "markdownify>=0.11.0",
 ]
 readme = "README.md"
 license = {text = "Apache-2.0"}

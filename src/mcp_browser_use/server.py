@@ -14,6 +14,9 @@ logging.getLogger("browser_use").setLevel(logging.CRITICAL)
 logging.getLogger("playwright").setLevel(logging.CRITICAL)
 
 import json
+import platform
+import subprocess
+import os
 
 import markdownify
 from browser_use.agent.message_manager.service import MessageManager
@@ -24,6 +27,96 @@ from mcp.server.fastmcp import FastMCP
 
 from .utils import check_playwright_installation
 
+def detect_default_browser():
+    """Detect the user's default browser and return browser type and path.
+    
+    Returns:
+        tuple: (browser_type, browser_path) where browser_type is 'chrome', 'brave', etc.
+               Returns ('chrome', None) if unable to detect or unsupported browser.
+    """
+    system = platform.system().lower()
+    
+    try:
+        if system == "darwin":  # macOS
+            # Get default browser bundle ID
+            result = subprocess.run([
+                "defaults", "read", "com.apple.LaunchServices/com.apple.launchservices.secure",
+                "LSHandlers"
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                output = result.stdout
+                # Look for HTTP handler
+                if "com.brave.browser" in output.lower():
+                    return ("brave", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")
+                elif "com.google.chrome" in output.lower():
+                    return ("chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+                elif "com.microsoft.edgemac" in output.lower():
+                    return ("chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge")  # Edge is Chromium-based
+                
+        elif system == "windows":
+            # Check registry for default browser
+            try:
+                import winreg
+                
+                # Check user choice for HTTP protocol
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                   r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice") as key:
+                    prog_id = winreg.QueryValueEx(key, "ProgId")[0]
+                    
+                if "brave" in prog_id.lower():
+                    # Try to find Brave installation
+                    brave_paths = [
+                        os.path.expanduser("~/AppData/Local/BraveSoftware/Brave-Browser/Application/brave.exe"),
+                        "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+                        "C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+                    ]
+                    for path in brave_paths:
+                        if os.path.exists(path):
+                            return ("brave", path)
+                    return ("brave", brave_paths[0])  # Default to first path
+                    
+                elif "chrome" in prog_id.lower():
+                    chrome_path = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+                    if os.path.exists(chrome_path):
+                        return ("chrome", chrome_path)
+                    alt_path = "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
+                    return ("chrome", alt_path if os.path.exists(alt_path) else chrome_path)
+                    
+                elif "edge" in prog_id.lower():
+                    edge_path = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+                    return ("chrome", edge_path)  # Edge is Chromium-based
+                    
+            except ImportError:
+                logger.warning("winreg not available, cannot detect default browser on Windows")
+            except Exception as e:
+                logger.warning(f"Could not detect default browser on Windows: {e}")
+                
+        elif system == "linux":
+            # Check xdg-settings for default browser
+            try:
+                result = subprocess.run(["xdg-settings", "get", "default-web-browser"], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    default_browser = result.stdout.strip().lower()
+                    
+                    if "brave" in default_browser:
+                        return ("brave", "/usr/bin/brave-browser")
+                    elif "chrome" in default_browser or "google-chrome" in default_browser:
+                        return ("chrome", "/usr/bin/google-chrome")
+                    elif "chromium" in default_browser:
+                        return ("chrome", "/usr/bin/chromium-browser")
+                        
+            except Exception as e:
+                logger.warning(f"Could not detect default browser on Linux: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Error detecting default browser: {e}")
+    
+    # Fallback to Chrome
+    logger.info("Could not detect default browser, falling back to Chrome")
+    return ("chrome", None)
+
 mcp = FastMCP("browser_use")
 
 browser: Optional[Browser] = None
@@ -33,9 +126,15 @@ message_manager: Optional[MessageManager] = None
 
 @mcp.tool()
 async def initialize_browser(headless: bool = False, task: str = "") -> str:
-    """Initialize a new browser instance.
+    """Initialize browser using user's default browser with all login sessions.
+    
+    Automatically detects and connects to the user's default browser (Chrome, Brave, Edge, etc.)
+    with existing sessions.
+    
+    IMPORTANT: Make sure to close all browser instances before calling this function.
+    
     Args:
-        headless: Whether to run browser in headless mode
+        headless: Whether to run browser in headless mode (usually False for user browser)
         task: The task to be performed
     Returns:
         Status message
@@ -45,7 +144,60 @@ async def initialize_browser(headless: bool = False, task: str = "") -> str:
     if browser:
         await close_browser()
 
-    config = BrowserConfig(headless=headless)
+    # Always use user browser with auto-detection
+    use_user_browser = True
+    browser_type = "auto"
+    chrome_path = ""
+
+    # Auto-detect browser since we always use auto-detection
+    detected_browser_type, detected_path = detect_default_browser()
+    browser_type = detected_browser_type
+    if not chrome_path and detected_path:
+        chrome_path = detected_path
+    logger.info(f"Auto-detected browser: {browser_type.title()}")
+
+    # Determine browser path based on OS and browser type if no path provided
+    if not chrome_path:
+        system = platform.system().lower()
+        
+        if browser_type.lower() == "brave":
+            if system == "darwin":  # macOS
+                chrome_path = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+            elif system == "windows":
+                # Try common Brave installation paths
+                brave_paths = [
+                    os.path.expanduser("~/AppData/Local/BraveSoftware/Brave-Browser/Application/brave.exe"),
+                    "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+                    "C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+                ]
+                chrome_path = None
+                for path in brave_paths:
+                    if os.path.exists(path):
+                        chrome_path = path
+                        break
+                if not chrome_path:
+                    chrome_path = brave_paths[0]  # Default to user profile path
+            elif system == "linux":
+                chrome_path = "/usr/bin/brave-browser"
+            else:
+                raise Exception(f"Unsupported operating system: {system}")
+        else:  # Default to Chrome
+            if system == "darwin":  # macOS
+                chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            elif system == "windows":
+                chrome_path = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+            elif system == "linux":
+                chrome_path = "/usr/bin/google-chrome"
+            else:
+                raise Exception(f"Unsupported operating system: {system}")
+
+    # Configure browser to use user's browser
+    config = BrowserConfig(
+        headless=headless,
+        chrome_instance_path=chrome_path
+    )
+    logger.info(f"Connecting to user's {browser_type.title()} browser at: {chrome_path}")
+
     browser = Browser(config=config)
     browser_context = BrowserContext(browser=browser)
 
@@ -57,11 +209,15 @@ async def initialize_browser(headless: bool = False, task: str = "") -> str:
         )
     ).get_system_message()
 
+    browser_mode = f"Connected to user's {browser_type.title()} browser with existing sessions"
     browser_system_prompt = f"""
         {system_prompt.text()}
         Your ultimate task is: {task}.
         If you achieved your ultimate task, stop everything and use the done tool to complete the task.
         If not, continue as usual.
+        
+        Browser mode: {browser_mode}
+        Note: Connected to your default browser with all existing login sessions and data.
     """
 
     return browser_system_prompt
